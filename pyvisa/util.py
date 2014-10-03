@@ -270,8 +270,8 @@ def parse_binary(bytes_data, is_big_endian=False, is_single=False):
     return result
 
 
-def from_ieee_block(block, datatype='f', is_big_endian=False, container=list):
-    """Convert a block in the IEEE format into an iterable of numbers.
+def from_binary_block(block, datatype='f', block_offset=0, is_ieee=True, is_big_endian=False, container=list):
+    """Convert a block of binary data into an iterable of numbers.
 
     Definite Length Arbitrary Block:
     #<header_length><data_length><data>
@@ -285,32 +285,36 @@ def from_ieee_block(block, datatype='f', is_big_endian=False, container=list):
     :param block: IEEE block.
     :type block: bytes
     :param datatype: the format string for a single element. See struct module.
+    :param block_offset: number of bytes to start of data block
     :param is_big_endian: boolean indicating endianess.
     :param container: container type to use for the output data.
     :return: items
     :rtype: type(container)
     """
 
-    begin = block.find(b'#')
-    if begin < 0:
-        raise ValueError("Could not find hash sign (#) indicating the start of the block.")
+    if is_ieee:
+        if block[block_offset] != b'#':
+            raise ValueError("Could not find hash sign (#) indicating the start of the block.")
+    
+        try:
+            # int(block[begin+1]) != int(block[begin+1:begin+2]) in Python 3
+            header_length = int(block[block_offset+1:block_offset+2])
+        except ValueError:
+            header_length = 0
 
-    try:
-        # int(block[begin+1]) != int(block[begin+1:begin+2]) in Python 3
-        header_length = int(block[begin+1:begin+2])
-    except ValueError:
-        header_length = 0
+        offset = block_offset + 2 + header_length
 
-    offset = begin + 2 + header_length
-
-    if header_length > 0:
-        # #3100DATA
-        # 012345
-        data_length = int(block[begin+2:offset])
+        if header_length > 0:
+            # #3100DATA
+            # 012345
+            data_length = int(block[block_offset+2:offset])
+        else:
+            # #0DATA
+            # 012
+            data_length = len(block) - offset - 1 - block_offset
     else:
-        # #0DATA
-        # 012
-        data_length = len(block) - offset - 1
+        data_length = len(block) - offset
+        offset = block_offset
 
     element_length = struct.calcsize(datatype)
     array_length = int(data_length / element_length)
